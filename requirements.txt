@@ -1,0 +1,7 @@
+streamlit
+groq
+pandas
+numpy
+xgboost
+requests
+python-dotenv
