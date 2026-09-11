@@ -47,4 +47,4 @@ if telemetry_data is not None:
                 file_name=f"space_weather_report_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
                 mime="text/plain"
             )
-# Trigger redeploy 
+            
