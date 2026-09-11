@@ -1,58 +1,53 @@
+
 import requests
 import pandas as pd
 import streamlit as st
 
 @st.cache_data(ttl=60)
 def fetch_dscovr_data():
-    """Fetches solar wind data with alternate endpoints and automatic fallback logic"""
-    # Alternative direct paths used by NOAA products
-    endpoints = [
-        ("https://services.swpc.noaa.gov/products/solar-wind/plasma-2-hour.json",
-         "https://services.swpc.noaa.gov/products/solar-wind/mag-2-hour.json"),
-        ("https://services.swpc.noaa.gov/json/dscovr/dscovr_plasma_1s.json",
-         "https://services.swpc.noaa.gov/json/dscovr/dscovr_mag_1s.json")
-    ]
+    """Fetches real-time solar wind telemetry using NOAA 2-hour endpoints"""
+    plasma_url = "https://services.swpc.noaa.gov/products/solar-wind/plasma-2-hour.json"
+    mag_url = "https://services.swpc.noaa.gov/products/solar-wind/mag-2-hour.json"
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json"
     }
 
-    for plasma_url, mag_url in endpoints:
-        try:
-            p_res = requests.get(plasma_url, headers=headers, timeout=5)
-            m_res = requests.get(mag_url, headers=headers, timeout=5)
+    try:
+        p_res = requests.get(plasma_url, headers=headers, timeout=10)
+        m_res = requests.get(mag_url, headers=headers, timeout=10)
 
-            if p_res.status_code == 200 and m_res.status_code == 200:
-                p_json = p_res.json()
-                m_json = m_res.json()
+        if p_res.status_code == 200 and m_res.status_code == 200:
+            p_json = p_res.json()
+            m_json = m_res.json()
 
-                df_plasma = pd.DataFrame(p_json[1:], columns=p_json[0])
-                df_mag = pd.DataFrame(m_json[1:], columns=m_json[0])
+            # Array of Arrays format: Index 0 is headers, Index 1+ is data
+            df_plasma = pd.DataFrame(p_json[1:], columns=p_json[0])
+            df_mag = pd.DataFrame(m_json[1:], columns=m_json[0])
 
-                if 'bz_gsm' in df_mag.columns:
-                    df_mag.rename(columns={'bz_gsm': 'bz'}, inplace=True)
+            # Rename bz_gsm to bz for unified schema
+            if 'bz_gsm' in df_mag.columns:
+                df_mag.rename(columns={'bz_gsm': 'bz'}, inplace=True)
 
-                df = pd.merge(df_plasma, df_mag, on="time_tag", how="inner").tail(50)
-                
-                for col in ['bz', 'speed', 'density']:
-                    if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
+            # Merge datasets on time_tag
+            df = pd.merge(df_plasma, df_mag, on="time_tag", how="inner").tail(50)
+            
+            # Convert metric columns to float
+            for col in ['bz', 'speed', 'density']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
 
-                df.ffill(inplace=True)
-                df.bfill(inplace=True)
-                return df
-        except Exception:
-            continue
-
-    # Fallback Data to prevent app crash when cloud network blocks API
-    st.toast("⚠️ Live NOAA API unreachable. Using cached telemetry backup.", icon="📡")
-    return pd.DataFrame({
-        "time_tag": [pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")],
-        "bz": [-4.2],
-        "speed": [480.5],
-        "density": [6.1]
-    })
+            df.ffill(inplace=True)
+            df.bfill(inplace=True)
+            return df
+        else:
+            print(f"NOAA API Error: Plasma ({p_res.status_code}), Mag ({m_res.status_code})")
+            return None
+            
+    except Exception as e:
+        print(f"Live API Fetch Error: {e}")
+        return None
 
 def run_ml_inference(data):
     """XGBoost Regression & Classification Inference Logic"""
